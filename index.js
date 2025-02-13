@@ -46,9 +46,17 @@ app.get('/api/details/:token', (req, res) => {
         }
         user.goals = JSON.parse(user.goals.replace(/'/g, '"'));
         user.feedback = JSON.parse(user.feedback.replace(/'/g, '"'));
+        user.CustomerRating = JSON.parse(user.CustomerRating.replace(/'/g, '"'));
+        user.ManagersOverallRating = JSON.parse(user.ManagersOverallRating.replace(/'/g, '"'));
+        user.TrainingSuggested = JSON.parse(user.TrainingSuggested.replace(/'/g, '"'));
+        user.Incentives = JSON.parse(user.Incentives.replace(/'/g, '"'));
+        user.TrainingsReceived = JSON.parse(user.TrainingsReceived.replace(/'/g, '"'));
+        user.Competencies = JSON.parse(user.Competencies.replace(/'/g, '"'));
         res.json({ email: user.email, name: user.name, phoneNo: user.phoneNo, address: user.address, role: user.role, department: user.department,
-            managerName: user.managerName, jobLocation: user.jobLocation, goals: user.goals, 
-            feedback: user.feedback });
+            managerName: user.managerName, jobLocation: user.jobLocation, goals: user.goals, experience: user.experience,
+            feedback: user.feedback, KPI: user.KPI, KRA: user.KRA, CustomerRating: user.CustomerRating, 
+            ManagersOverallRating: user.ManagersOverallRating, TrainingSuggested: user.TrainingSuggested, Incentives: user.Incentives,
+            TrainingsReceived: user.TrainingsReceived, Competencies: user.Competencies});
     });
 });
 
@@ -62,7 +70,34 @@ app.get('/api/details', (req, res) => {
         // Process each row to parse the goals and feedback fields
         const users = rows.map(user => {
             user.goals = JSON.parse(user.goals.replace(/'/g, '"'));
-            user.feedback = JSON.parse(user.feedback.replace(/'/g, '"'));
+            user.feedback = JSON.parse(user.feedback.replace(/'/g, '"'))
+            user.Competencies = JSON.parse(user.Competencies.replace(/'/g, '"'))
+            user.CustomerRating = JSON.parse(user.CustomerRating.replace(/'/g, '"'))
+            return user;
+        });
+
+        res.json(users);
+    });
+});
+
+app.get('/api/highest-rated-employee', (req, res) => {
+    const sql = `
+    SELECT * FROM details 
+    WHERE CustomerRating = (SELECT MAX(CustomerRating) FROM details);
+`;
+
+    db.all(sql, [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+
+        // Process each row to parse necessary fields
+        const users = rows.map(user => {
+            try {
+                user.CustomerRating = JSON.parse(user.CustomerRating.replace(/'/g, '"'));
+            } catch (error) {
+                console.error('Error parsing JSON fields:', error);
+            }
             return user;
         });
 
@@ -121,10 +156,10 @@ app.put('/api/details/updateAllGoals/:email', (req, res) => {
 //update feedback
 app.put('/api/details/addFeedback/:email', (req, res) => {
     const email = req.params.email;
-    const { feedback } = req.body;
+    const { feedback, managersRating } = req.body;
 
     // Fetch existing feedback
-    const fetchSql = `SELECT feedback FROM details WHERE email = ?`;
+    const fetchSql = `SELECT feedback and ManagersOverallRating FROM details WHERE email = ?`;
     db.get(fetchSql, [email], (err, row) => {
         if (err) {
             return res.status(500).json({ error: err.message });
@@ -134,13 +169,44 @@ app.put('/api/details/addFeedback/:email', (req, res) => {
         if (row && row.feedback) {
             existingFeedback = JSON.parse(row.feedback.replace(/'/g, '"'));
         }
+        
         console.log(feedback)
         // Merge existing goals with new goals
         existingFeedback.push(feedback)
-
+        let updatedManagersRating = [managersRating]
+        console.log(existingFeedback, updatedManagersRating);
         // Update the goals in the database
-        const updateSql = `UPDATE details SET feedback = ? WHERE email = ?`;
-        db.run(updateSql, [JSON.stringify(existingFeedback), email], function(err) {
+        const updateSql = `UPDATE details SET feedback = ?, ManagersOverallRating = ? WHERE email = ?`;
+        db.run(updateSql, [JSON.stringify(existingFeedback), JSON.stringify(updatedManagersRating), email], function(err) {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ message: 'Feedback updated successfully', changes: this.changes, status: '200' });
+        });
+    });
+});
+
+app.put('/api/details/addTraining/:email', (req, res) => {
+    const email = req.params.email;
+    const { training } = req.body;
+
+    // Fetch existing feedback
+    const fetchSql = `SELECT TrainingSuggested FROM details WHERE email = ?`;
+    db.get(fetchSql, [email], (err, row) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+
+        let existingTraining = [];
+        if (row && row.TrainingSuggested) {
+            existingTraining = JSON.parse(row.TrainingSuggested.replace(/'/g, '"'));
+        }
+        
+        // Merge existing goals with new goals
+        existingTraining.push(training)
+        // Update the goals in the database
+        const updateSql = `UPDATE details SET TrainingSuggested = ? WHERE email = ?`;
+        db.run(updateSql, [JSON.stringify(existingTraining), email], function(err) {
             if (err) {
                 return res.status(500).json({ error: err.message });
             }
